@@ -216,3 +216,24 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# Virtual environment
+.venv/
+
+# Datasets
+data/raw/
+data/processed/
+
+# Trained model files
+model/*.pt
+model/*.pth
+model/*.onnx
+
+# Experiment outputs
+experiments/runs/
+reports/generated/
+
+# Python cache
+__pycache__/
+*.py[cod]

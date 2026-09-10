@@ -1,0 +1,30 @@
+project:
+  name: SignalScope
+  task: real_vs_ai_generated_image_classification
+
+data:
+  image_size: 224
+  num_classes: 2
+
+  labels:
+    real: 0
+    ai_generated: 1
+
+training:
+  batch_size: 16
+  epochs: 30
+  learning_rate: 0.0001
+  num_workers: 2
+
+model:
+  name: efficientnet_b0
+  pretrained: true
+
+evaluation:
+  metrics:
+    - roc_auc
+    - macro_f1
+    - accuracy
+    - confusion_matrix
+
+  threshold: 0.5
