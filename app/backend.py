@@ -1,3 +1,8 @@
+import base64
+import io
+
+from src.explainability.heatmap_utils import create_overlay
+
 from io import BytesIO
 from pathlib import Path
 
@@ -8,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.models.model import create_model
 from src.data.transforms import get_eval_transforms
+from src.explainability.gradcam import GradCAM
 
 
 # ==============================================================
@@ -46,6 +52,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -93,6 +101,19 @@ model = model.to(DEVICE)
 model.eval()
 
 transform = get_eval_transforms()
+
+# ==============================================================
+# Grad-CAM setup
+# ==============================================================
+
+target_layer = model.features[-1]
+
+gradcam = GradCAM(
+    model,
+    target_layer
+)
+
+print("Grad-CAM initialized.")
 
 print("Model loaded successfully.")
 print("=" * 60)
@@ -185,6 +206,10 @@ async def predict_image(
     # Model prediction
     # ----------------------------------------------------------
 
+    # ----------------------------------------------------------
+# Model prediction
+# ----------------------------------------------------------
+
     with torch.no_grad():
 
         outputs = model(
@@ -195,6 +220,43 @@ async def predict_image(
             outputs,
             dim=1
         )[0]
+
+    predicted_class = int(
+        torch.argmax(
+            probabilities
+        ).item()
+    )
+
+    # ----------------------------------------------------------
+    # Generate Grad-CAM
+    # ----------------------------------------------------------
+
+    with torch.enable_grad():
+
+        cam = gradcam.generate(
+            image_tensor,
+            predicted_class
+        )
+
+    # ----------------------------------------------------------
+    # Create visual heatmap overlay
+    # ----------------------------------------------------------
+
+    heatmap_image = create_overlay(
+        image,
+        cam
+    )
+
+    buffer = io.BytesIO()
+
+    heatmap_image.save(
+        buffer,
+        format="PNG"
+    )
+
+    heatmap_base64 = base64.b64encode(
+        buffer.getvalue()
+    ).decode("utf-8")
 
     real_probability = float(
         probabilities[0].item()
@@ -237,6 +299,7 @@ async def predict_image(
             4
         ),
         "filename": file.filename,
+        "heatmap_image": heatmap_base64,
         "message": (
             "This is a likelihood assessment based on "
             "the model's learned visual patterns."
