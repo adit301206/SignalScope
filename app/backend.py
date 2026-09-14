@@ -15,6 +15,11 @@ from src.models.model import create_model
 from src.data.transforms import get_eval_transforms
 from src.explainability.gradcam import GradCAM
 
+from src.attribution.model import (
+    create_attribution_model,
+    GENERATOR_CLASSES,
+)
+
 
 # ==============================================================
 # Configuration
@@ -26,6 +31,10 @@ DEVICE = torch.device(
 
 CHECKPOINT_PATH = Path(
     "model/best_efficientnet_b0_mixed.pth"
+)
+
+ATTRIBUTION_CHECKPOINT_PATH = Path(
+    "model/generator_attribution_30k.pth"
 )
 
 IMAGE_SIZE = 224
@@ -101,6 +110,40 @@ model = model.to(DEVICE)
 model.eval()
 
 transform = get_eval_transforms()
+
+# ==============================================================
+# Generator Attribution Model
+# ==============================================================
+
+print(
+    f"Loading attribution checkpoint: "
+    f"{ATTRIBUTION_CHECKPOINT_PATH}"
+)
+
+attribution_model = create_attribution_model(
+    pretrained=False
+)
+
+attribution_checkpoint = torch.load(
+    ATTRIBUTION_CHECKPOINT_PATH,
+    map_location=DEVICE,
+)
+
+if "model_state_dict" in attribution_checkpoint:
+    attribution_state_dict = attribution_checkpoint[
+        "model_state_dict"
+    ]
+else:
+    attribution_state_dict = attribution_checkpoint
+
+attribution_model.load_state_dict(
+    attribution_state_dict
+)
+
+attribution_model = attribution_model.to(DEVICE)
+attribution_model.eval()
+
+print("Generator attribution model loaded.")
 
 # ==============================================================
 # Grad-CAM setup
@@ -221,6 +264,58 @@ async def predict_image(
             dim=1
         )[0]
 
+    # ----------------------------------------------------------
+    # Generator Attribution Prediction
+    # ----------------------------------------------------------
+
+    with torch.no_grad():
+
+        attribution_outputs = attribution_model(
+            image_tensor
+        )
+
+        attribution_probabilities = torch.softmax(
+            attribution_outputs,
+            dim=1
+        )[0]
+
+    attribution_top2 = torch.topk(
+        attribution_probabilities,
+        k=2
+    )
+
+    attribution_predictions = []
+
+    for score, class_index in zip(
+        attribution_top2.values,
+        attribution_top2.indices,
+    ):
+        attribution_predictions.append({
+            "generator": GENERATOR_CLASSES[
+                int(class_index.item())
+            ],
+            "confidence": round(
+                float(score.item()),
+                4
+            ),
+        })
+
+    attribution_class = int(
+        torch.argmax(
+            attribution_probabilities
+        ).item()
+    )
+
+    attribution_generator = GENERATOR_CLASSES[
+        attribution_class
+    ]
+
+    attribution_confidence = float(
+        attribution_probabilities[
+            attribution_class
+        ].item()
+    )
+
     predicted_class = int(
         torch.argmax(
             probabilities
@@ -300,6 +395,14 @@ async def predict_image(
         ),
         "filename": file.filename,
         "heatmap_image": heatmap_base64,
+        "attribution": {
+            "generator": attribution_generator,
+            "confidence": round(
+                attribution_confidence,
+                4
+            ),
+            "top_2": attribution_predictions,
+        },
         "message": (
             "This is a likelihood assessment based on "
             "the model's learned visual patterns."

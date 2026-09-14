@@ -1,0 +1,44 @@
+SignalScope - 30K Generator Attribution Evaluation
+======================================================================
+
+Checkpoint: model\generator_attribution_30k.pth
+Evaluation samples: 600
+Validation Accuracy: 0.8440
+Validation Macro-F1: 0.8445
+Test Accuracy: 0.7400
+Test Macro-F1: 0.7366
+Top-2 Accuracy: 0.9067
+
+Confusion Matrix:
+
+                      real  stable_diffusion_2_1  stable_diffusion_xl  stable_diffusion_3  dalle_3  midjourney_6
+real                    82                     2                    2                   3        0            11
+stable_diffusion_2_1    24                    53                   15                   5        1             2
+stable_diffusion_xl     11                    12                   73                   1        0             3
+stable_diffusion_3      21                    17                    8                  53        0             1
+dalle_3                  2                     0                    0                   1       86            11
+midjourney_6             2                     0                    1                   0        0            97
+
+Classification Report:
+
+                      precision    recall  f1-score   support
+
+                real       0.58      0.82      0.68       100
+stable_diffusion_2_1       0.63      0.53      0.58       100
+ stable_diffusion_xl       0.74      0.73      0.73       100
+  stable_diffusion_3       0.84      0.53      0.65       100
+             dalle_3       0.99      0.86      0.92       100
+        midjourney_6       0.78      0.97      0.86       100
+
+            accuracy                           0.74       600
+           macro avg       0.76      0.74      0.74       600
+        weighted avg       0.76      0.74      0.74       600
+
+Generator-wise Accuracy:
+
+real: 0.8200 (82/100)
+stable_diffusion_2_1: 0.5300 (53/100)
+stable_diffusion_xl: 0.7300 (73/100)
+stable_diffusion_3: 0.5300 (53/100)
+dalle_3: 0.8600 (86/100)
+midjourney_6: 0.9700 (97/100)

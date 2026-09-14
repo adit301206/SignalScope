@@ -16,7 +16,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import type { AnalysisResult } from "@/api/analysis";
+import type { AnalysisResult, GeneratorAttribution, GeneratorCandidate } from "@/api/analysis";
 import { useTheme } from "@/contexts/ThemeContext";
 
 export function BrandMark() {
@@ -125,6 +125,73 @@ export function AnalysisLoader() {
 
 function percent(value = 0) { return `${Math.round(value * 100)}%`; }
 
+const GENERATOR_NAMES: Record<string, string> = {
+  dalle_3: "DALL-E 3",
+  midjourney_6: "Midjourney 6",
+  stable_diffusion_2_1: "Stable Diffusion 2.1",
+  stable_diffusion_xl: "Stable Diffusion XL",
+  stable_diffusion_3: "Stable Diffusion 3",
+  real: "Real / Natural Image",
+};
+
+export function formatGeneratorName(rawName?: string): string {
+  if (!rawName) return "Unknown";
+  if (GENERATOR_NAMES[rawName]) {
+    return GENERATOR_NAMES[rawName];
+  }
+  return rawName
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+export function GeneratorAttributionCard({ attribution }: { attribution?: GeneratorAttribution }) {
+  if (!attribution || !attribution.generator) {
+    return null;
+  }
+
+  let secondCandidate: GeneratorCandidate | null = null;
+  if (Array.isArray(attribution.top_2) && attribution.top_2.length > 0) {
+    const candidate = attribution.top_2.find(
+      (item) => item && item.generator && item.generator !== attribution.generator
+    ) || (attribution.top_2.length > 1 ? attribution.top_2[1] : null);
+
+    if (candidate && candidate.generator && typeof candidate.confidence === "number") {
+      secondCandidate = candidate;
+    }
+  }
+
+  return (
+    <div className="attribution-block">
+      <div className="attribution-block__header">
+        <span className="eyebrow">GENERATOR ATTRIBUTION</span>
+      </div>
+      <div className="attribution-card">
+        <div className="attribution-main">
+          <span className="attribution-label">Likely generator</span>
+          <div className="attribution-primary-row">
+            <h3 className="attribution-generator">{formatGeneratorName(attribution.generator)}</h3>
+            <span className="attribution-confidence">{percent(attribution.confidence)}</span>
+          </div>
+        </div>
+        {secondCandidate && (
+          <div className="attribution-secondary">
+            <span className="attribution-secondary__label">Also considered</span>
+            <div className="attribution-secondary__row">
+              <span className="attribution-secondary__name">{formatGeneratorName(secondCandidate.generator)}</span>
+              <span className="attribution-secondary__conf mono">{percent(secondCandidate.confidence)}</span>
+            </div>
+          </div>
+        )}
+        <div className="attribution-disclaimer">
+          <Info size={14} className="attribution-disclaimer__icon" />
+          <p>Model-estimated attribution based on visual patterns. This is not provenance verification.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ProbabilityBars({ result }: { result: AnalysisResult }) {
   return <div className="probability-block"><div className="probability-row"><div><span>AI Generated</span><strong>{percent(result.probability_ai)}</strong></div><div className="probability-track"><span className="probability-fill probability-fill--ai" style={{ "--fill": percent(result.probability_ai) } as React.CSSProperties} /></div></div><div className="probability-row"><div><span>Likely Real</span><strong>{percent(result.probability_real)}</strong></div><div className="probability-track"><span className="probability-fill probability-fill--real" style={{ "--fill": percent(result.probability_real) } as React.CSSProperties} /></div></div></div>;
 }
@@ -139,7 +206,7 @@ export function ResultView({ result, file, onReset }: { result: AnalysisResult; 
   const isAI = result.label.toLowerCase().includes("ai");
   return <div className="results-wrap">
     <div className="result-hero"><div className="result-hero__heading"><span className={`verdict-mark ${isAI ? "verdict-mark--ai" : "verdict-mark--real"}`}>{isAI ? <AlertTriangle size={22} /> : <Check size={22} />}</span><div><span className="eyebrow">MODEL ASSESSMENT</span><h2>Likely {isAI ? "AI Generated" : "Real"}</h2><p>{result.message || "The model has returned a confidence-based likelihood assessment for this image."}</p></div></div><div className="confidence"><span>CONFIDENCE</span><strong>{percent(result.confidence)}</strong><div className={`confidence-bar ${isAI ? "confidence-bar--ai" : "confidence-bar--real"}`}><i style={{ width: percent(result.confidence) }} /></div></div></div>
-    <div className="result-grid"><div className="result-main"><ProbabilityBars result={result} /><ImageComparison file={file} heatmap={result.heatmap_image} /><div className="signal-profile" aria-label="Decorative signal profile"><div className="signal-profile__head"><span className="eyebrow">VISUAL DESIGN ELEMENT</span><span className="mono">NOT MODEL DATA</span></div><div className="signal-profile__wave" /><p>Abstract signal profile for visual continuity — not a measurement returned by the classifier.</p></div></div><aside className="result-side"><div className="info-card"><div className="info-card__title"><Info size={16} /><span>Why this result?</span></div><p>Highlighted regions contributed more strongly to the model’s prediction. The Grad-CAM view is an explanation aid that helps inspect model attention, not proof of image origin.</p></div><div className="info-card info-card--muted"><div className="info-card__title"><ShieldCheck size={16} /><span>Use with care</span></div><p>Detection is probabilistic. Performance can vary across generators, transformations, compression, and image domains.</p></div><div className="tech-card"><div className="tech-card__title">TECHNICAL DETAILS</div><dl><div><dt>File name</dt><dd title={file.name}>{file.name}</dd></div><div><dt>File type</dt><dd>{file.type || "Unknown"}</dd></div><div><dt>Dimensions</dt><dd>Not returned</dd></div><div><dt>Model</dt><dd>SignalScope classifier</dd></div><div><dt>Status</dt><dd className="status-inline"><span className="status-dot" /> Complete</dd></div></dl></div></aside></div>
+    <div className="result-grid"><div className="result-main"><ProbabilityBars result={result} />{result.attribution && <GeneratorAttributionCard attribution={result.attribution} />}<ImageComparison file={file} heatmap={result.heatmap_image} /><div className="signal-profile" aria-label="Decorative signal profile"><div className="signal-profile__head"><span className="eyebrow">VISUAL DESIGN ELEMENT</span><span className="mono">NOT MODEL DATA</span></div><div className="signal-profile__wave" /><p>Abstract signal profile for visual continuity — not a measurement returned by the classifier.</p></div></div><aside className="result-side"><div className="info-card"><div className="info-card__title"><Info size={16} /><span>Why this result?</span></div><p>Highlighted regions contributed more strongly to the model’s prediction. The Grad-CAM view is an explanation aid that helps inspect model attention, not proof of image origin.</p></div><div className="info-card info-card--muted"><div className="info-card__title"><ShieldCheck size={16} /><span>Use with care</span></div><p>Detection is probabilistic. Performance can vary across generators, transformations, compression, and image domains.</p></div><div className="tech-card"><div className="tech-card__title">TECHNICAL DETAILS</div><dl><div><dt>File name</dt><dd title={file.name}>{file.name}</dd></div><div><dt>File type</dt><dd>{file.type || "Unknown"}</dd></div><div><dt>Dimensions</dt><dd>Not returned</dd></div><div><dt>Model</dt><dd>SignalScope classifier</dd></div><div><dt>Status</dt><dd className="status-inline"><span className="status-dot" /> Complete</dd></div></dl></div></aside></div>
     <div className="result-actions"><button className="button button--primary" onClick={onReset}>Analyze another image <ArrowRight size={17} /></button><span className="result-note"><ShieldCheck size={15} /> No image is stored by this interface.</span></div>
   </div>;
 }

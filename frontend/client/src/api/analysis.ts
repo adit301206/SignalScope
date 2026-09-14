@@ -1,3 +1,14 @@
+export interface GeneratorCandidate {
+  generator: string;
+  confidence: number;
+}
+
+export interface GeneratorAttribution {
+  generator: string;
+  confidence: number;
+  top_2?: GeneratorCandidate[];
+}
+
 export interface AnalysisResult {
   label: string;
   confidence: number;
@@ -6,6 +17,7 @@ export interface AnalysisResult {
   filename: string;
   message: string;
   heatmap_image: string;
+  attribution?: GeneratorAttribution;
 }
 
 const API_URL =
@@ -70,5 +82,6 @@ export async function analyzeImage(file: File): Promise<AnalysisResult> {
         ? data.heatmap_image
         : `data:image/png;base64,${data.heatmap_image}`
       : "",
+    attribution: data.attribution,
   };
 }
