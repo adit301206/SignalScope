@@ -48,8 +48,8 @@ export function InsightsPage() {
           }
         >
           <span>
-            SignalScope was evaluated on a separate Defactify distribution
-            containing real images and images from five unseen generators.
+            SignalScope was evaluated on a separate Defactify image split
+            containing real images and images from five generator families.
           </span>
         </PageIntro>
 
@@ -71,7 +71,7 @@ export function InsightsPage() {
               <span className="eyebrow">OVERALL PERFORMANCE</span>
               <h2>Evaluation metrics</h2>
             </div>
-            <span className="mono">HELD-OUT / UNSEEN GENERATORS</span>
+            <span className="mono">HELD-OUT IMAGE SPLIT</span>
           </div>
 
           <div className="metric-grid">
@@ -90,18 +90,19 @@ export function InsightsPage() {
             <div className="product-section-head">
               <div>
                 <span className="eyebrow">
-                  UNSEEN GENERATOR EVALUATION
+                  HELD-OUT EVALUATION
                 </span>
                 <h2>Beyond the training distribution</h2>
               </div>
             </div>
 
             <p className="section-copy">
-              The detector was evaluated on images produced by generators
-              outside the original CIFAKE training distribution. Detection
-              performance varies across generators, highlighting why
-              synthetic-image detection should be treated as a probabilistic
-              assessment rather than proof of origin.
+              The detector was evaluated on a held-out Defactify image split.
+              The mixed training experiment also selected examples from these
+              generator families, so this is not strict generator-held-out
+              evidence. Detection performance still varies across generators,
+              reinforcing that this is a probabilistic assessment rather than
+              proof of origin.
             </p>
 
             <div className="unavailable-table">

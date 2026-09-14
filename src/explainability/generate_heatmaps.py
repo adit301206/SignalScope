@@ -19,14 +19,14 @@ CLASS_NAMES = {
 }
 
 
-def load_model(device):
+def load_model(device, model_path):
     model = create_model(
         num_classes=2,
         pretrained=False
     )
 
     checkpoint = torch.load(
-        MODEL_PATH,
+        model_path,
         map_location=device
     )
 
@@ -42,15 +42,15 @@ def load_model(device):
     return model
 
 
-def generate_heatmap(image_path, output_path):
+def generate_heatmap(image_path, output_path, model_path=MODEL_PATH):
     device = get_device()
 
     print("Device:", device)
 
-    model = load_model(device)
+    model = load_model(device, model_path)
 
     # Final convolutional layer
-    target_layer = model.features[-1][0]
+    target_layer = model.features[-1]
 
     gradcam = GradCAM(
         model=model,
@@ -66,9 +66,11 @@ def generate_heatmap(image_path, output_path):
     input_tensor = transform(image).unsqueeze(0)
     input_tensor = input_tensor.to(device)
 
-    cam, predicted_class, probabilities = gradcam.generate(
-        input_tensor
-    )
+    with torch.enable_grad():
+        outputs = model(input_tensor)
+        probabilities = torch.softmax(outputs, dim=1)[0]
+        predicted_class = int(torch.argmax(probabilities).item())
+        cam = gradcam.generate(input_tensor, predicted_class)
 
     ai_probability = probabilities[1].item()
 
@@ -77,9 +79,6 @@ def generate_heatmap(image_path, output_path):
     print("Class:", CLASS_NAMES[predicted_class])
     print("AI probability:", f"{ai_probability:.4f}")
     print("REAL probability:", f"{probabilities[0].item():.4f}")
-
-    # Convert CAM to NumPy
-    cam = cam.numpy()
 
     # Resize CAM to original image dimensions
     height, width = original.shape[:2]
@@ -137,7 +136,7 @@ def generate_heatmap(image_path, output_path):
     print(output_path)
     print(heatmap_path)
 
-    gradcam.remove_hooks()
+    gradcam.close()
 
 
 def main():
@@ -155,11 +154,18 @@ def main():
         help="Path to save Grad-CAM overlay"
     )
 
+    parser.add_argument(
+        "--model",
+        default=MODEL_PATH,
+        help="EfficientNet-B0 checkpoint path",
+    )
+
     args = parser.parse_args()
 
     generate_heatmap(
         args.image,
-        args.output
+        args.output,
+        args.model,
     )
 
 

@@ -1,5 +1,6 @@
 import base64
 import io
+import os
 
 from src.explainability.heatmap_utils import create_overlay
 
@@ -29,13 +30,17 @@ DEVICE = torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
 )
 
-CHECKPOINT_PATH = Path(
-    "model/best_efficientnet_b0_mixed.pth"
-)
+CHECKPOINT_PATH = Path(os.getenv(
+    "SIGNALSCOPE_CLASSIFIER_CHECKPOINT",
+    "src/models/best_efficientnet_b0.pth",
+))
 
-ATTRIBUTION_CHECKPOINT_PATH = Path(
-    "model/generator_attribution_30k.pth"
-)
+ATTRIBUTION_CHECKPOINT_PATH = Path(os.getenv(
+    "SIGNALSCOPE_ATTRIBUTION_CHECKPOINT",
+    "model/generator_attribution_30k.pth",
+))
+
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 
 IMAGE_SIZE = 224
 
@@ -115,35 +120,31 @@ transform = get_eval_transforms()
 # Generator Attribution Model
 # ==============================================================
 
-print(
-    f"Loading attribution checkpoint: "
-    f"{ATTRIBUTION_CHECKPOINT_PATH}"
-)
+attribution_model = None
 
-attribution_model = create_attribution_model(
-    pretrained=False
-)
-
-attribution_checkpoint = torch.load(
-    ATTRIBUTION_CHECKPOINT_PATH,
-    map_location=DEVICE,
-)
-
-if "model_state_dict" in attribution_checkpoint:
-    attribution_state_dict = attribution_checkpoint[
-        "model_state_dict"
-    ]
+if ATTRIBUTION_CHECKPOINT_PATH.exists():
+    print(
+        f"Loading attribution checkpoint: "
+        f"{ATTRIBUTION_CHECKPOINT_PATH}"
+    )
+    attribution_model = create_attribution_model(pretrained=False)
+    attribution_checkpoint = torch.load(
+        ATTRIBUTION_CHECKPOINT_PATH,
+        map_location=DEVICE,
+    )
+    if "model_state_dict" in attribution_checkpoint:
+        attribution_state_dict = attribution_checkpoint["model_state_dict"]
+    else:
+        attribution_state_dict = attribution_checkpoint
+    attribution_model.load_state_dict(attribution_state_dict)
+    attribution_model = attribution_model.to(DEVICE)
+    attribution_model.eval()
+    print("Generator attribution model loaded.")
 else:
-    attribution_state_dict = attribution_checkpoint
-
-attribution_model.load_state_dict(
-    attribution_state_dict
-)
-
-attribution_model = attribution_model.to(DEVICE)
-attribution_model.eval()
-
-print("Generator attribution model loaded.")
+    print(
+        "Generator attribution disabled; checkpoint not found: "
+        f"{ATTRIBUTION_CHECKPOINT_PATH}"
+    )
 
 # ==============================================================
 # Grad-CAM setup
@@ -171,7 +172,7 @@ def root():
     return {
         "name": "SignalScope API",
         "status": "running",
-        "model": "EfficientNet-B0 Mixed",
+        "model": "EfficientNet-B0 binary classifier",
         "device": str(DEVICE),
     }
 
@@ -181,6 +182,7 @@ def health():
     return {
         "status": "healthy",
         "model_loaded": True,
+        "attribution_model_loaded": attribution_model is not None,
         "device": str(DEVICE),
     }
 
@@ -222,9 +224,18 @@ async def predict_image(
 
         contents = await file.read()
 
+        if len(contents) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="Uploaded image exceeds the 15 MB limit.",
+            )
+
         image = Image.open(
             BytesIO(contents)
         ).convert("RGB")
+
+    except HTTPException:
+        raise
 
     except Exception:
 
@@ -268,53 +279,34 @@ async def predict_image(
     # Generator Attribution Prediction
     # ----------------------------------------------------------
 
-    with torch.no_grad():
+    attribution = None
 
-        attribution_outputs = attribution_model(
-            image_tensor
-        )
+    if attribution_model is not None:
+        with torch.no_grad():
+            attribution_outputs = attribution_model(image_tensor)
+            attribution_probabilities = torch.softmax(
+                attribution_outputs, dim=1
+            )[0]
 
-        attribution_probabilities = torch.softmax(
-            attribution_outputs,
-            dim=1
-        )[0]
+        attribution_top2 = torch.topk(attribution_probabilities, k=2)
+        attribution_predictions = []
 
-    attribution_top2 = torch.topk(
-        attribution_probabilities,
-        k=2
-    )
+        for score, class_index in zip(
+            attribution_top2.values, attribution_top2.indices
+        ):
+            attribution_predictions.append({
+                "generator": GENERATOR_CLASSES[int(class_index.item())],
+                "confidence": round(float(score.item()), 4),
+            })
 
-    attribution_predictions = []
-
-    for score, class_index in zip(
-        attribution_top2.values,
-        attribution_top2.indices,
-    ):
-        attribution_predictions.append({
-            "generator": GENERATOR_CLASSES[
-                int(class_index.item())
-            ],
+        attribution_class = int(torch.argmax(attribution_probabilities).item())
+        attribution = {
+            "generator": GENERATOR_CLASSES[attribution_class],
             "confidence": round(
-                float(score.item()),
-                4
+                float(attribution_probabilities[attribution_class].item()), 4
             ),
-        })
-
-    attribution_class = int(
-        torch.argmax(
-            attribution_probabilities
-        ).item()
-    )
-
-    attribution_generator = GENERATOR_CLASSES[
-        attribution_class
-    ]
-
-    attribution_confidence = float(
-        attribution_probabilities[
-            attribution_class
-        ].item()
-    )
+            "top_2": attribution_predictions,
+        }
 
     predicted_class = int(
         torch.argmax(
@@ -395,14 +387,7 @@ async def predict_image(
         ),
         "filename": file.filename,
         "heatmap_image": heatmap_base64,
-        "attribution": {
-            "generator": attribution_generator,
-            "confidence": round(
-                attribution_confidence,
-                4
-            ),
-            "top_2": attribution_predictions,
-        },
+        "attribution": attribution,
         "message": (
             "This is a likelihood assessment based on "
             "the model's learned visual patterns."

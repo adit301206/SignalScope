@@ -1,135 +1,131 @@
 # SignalScope
 
-**Telling Real From Synthetic in the Age of Generative Media**
-SIH 2026 — Problem Statement 2 (C-433) — L. J. Institute of Engineering and Technology
+SignalScope estimates whether a submitted image is likely real or AI-generated. It uses an EfficientNet-B0 binary classifier, returns softmax probabilities, and produces a Grad-CAM visualisation of the image regions that influenced the selected class. A separate six-class model supports experimental generator attribution when its checkpoint is supplied.
 
-SignalScope classifies an input image as **real** or **AI-generated**, reports performance on a
-held-out test set that includes images from generators unseen during training, and produces a
-faithful, human-readable explanation of the visual cues behind each verdict.
+The result is an analytical likelihood, not proof of image origin, provenance, manipulation, or intent. SignalScope is not a face-swap/deepfake verifier and does not perform EXIF, C2PA, Content Credentials, image-text consistency, or adversarial analysis.
 
-> Outputs are always framed as a likelihood ("likely AI-generated"), never an accusation. This
-> project detects AI-generated imagery in general (scenes, objects, art, product shots) — it does
-> **not** do face-swap deepfake detection of real individuals and does **not** adjudicate
-> political claims or real-world events.
+## Problem statement
 
----
+Synthetic images can be used in misinformation, fraud, and misleading listings. A detector needs a useful real-versus-synthetic signal and honest uncertainty, especially on distributions that differ from training data. See [the problem statement](reports/Problem-Statement.md).
 
-## 1. Modules built
+## Solution and current status
 
-| Module | Status |
-|---|---|
-| **Core** — real vs AI-generated classification | ✅ Required |
-| A. Faithful explanation (Grad-CAM + grounded text) | ⬜ |
-| B. Generator attribution | ⬜ |
-| C. Robustness to degradation | ⬜ |
-| D. Provenance & metadata (C2PA / EXIF) | ⬜ |
-| E. Multimodal image–text consistency | ⬜ |
-| F. Real-time / deployable interface | ⬜ |
-| G. Active defence / adversarial analysis | ⬜ |
-
-*Update the checkboxes above as modules are completed.*
-
-## 2. Problem statement
-
-Text-to-image models can now produce photorealistic images in seconds, which is fueling
-misinformation, fraud, fake product listings, and manipulated "evidence." The hard part is not
-just classifying real vs. fake — detectors that perform well on generators seen during training
-often fail on images from a new, unseen generator, which is exactly the situation that matters in
-the real world. A verdict alone is also not enough to build trust: without a clear explanation of
-*why* an image was flagged, users have no way to judge or act on the result.
-
-See [`reports/Problem-Statement.md`](reports/Problem-Statement.md)
-for the full write-up.
-
-## 3. Proposed solution / architecture
-
-```
-Image → Preprocessing → EfficientNet-B0 → Probability → Calibration → Real/AI → Grad-CAM → Explanation
+```mermaid
+flowchart LR
+    I[Uploaded RGB image] --> P[Resize to 224 x 224 and ImageNet normalization]
+    P --> C[EfficientNet-B0 binary classifier]
+    C --> S[Softmax real / AI probabilities]
+    C --> G[Grad-CAM on final EfficientNet feature block]
+    G --> O[Overlay image]
+    S --> R[Likelihood response]
+    A[Optional attribution checkpoint] --> AT[Six-class EfficientNet-B0 attribution]
+    AT --> R
 ```
 
-- **Preprocessing** — resize, normalize, and augment for robustness to compression/resizing/screenshots.
-- **EfficientNet-B0** — transfer-learning CNN backbone for feature extraction.
-- **Probability** — raw real-vs-AI-generated likelihood from the backbone.
-- **Calibration** — temperature scaling so confidence scores are honest, not just high.
-- **Real / AI verdict** — calibrated probability thresholded into a label + confidence.
-- **Grad-CAM** — saliency heat-map showing which regions drove the decision.
-- **Explanation** — grounded, human-readable text describing the visual cues, generated from the heat-map.
-
-Full rationale in [`reports/Proposed-Solution.md`](reports/Proposed-Solution.md).
-
-## 4. Repository structure
-
-```
-SignalScope/
-├── README.md                 ← you are here
-├── requirements.txt
-├── src/               ← source code
-├── model/                     ← training/inference code + predict interface
-│   └── weights/                ← via release link if large
-├── reports/
-│   ├── Problem_Statement_and_Solution.md
-│   ├── Project_Metadata.md
-│   └── model_report.md        ← one-page model report (Section 7.3)
-└── demo/                       ← link to demo video, screenshots
-```
-
-## 5. Setup & run instructions
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/adit301206/SignalScope.git
-cd SignalScope
-
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Run a prediction on a new image
-python model/predict.py --image path/to/image.jpg
-```
-
-*A judge should be able to go from clone to a prediction in under ~10 minutes. Update the
-commands above once the actual entry point / CLI (or web app / notebook) is finalized.*
-
-## 6. Datasets used
-
-| Split | Source | Notes |
+| Feature | Status | Evidence |
 |---|---|---|
-| Train / validation | Organizer-provided CIFAKE-style real-vs-synthetic set (real photos + images from disclosed generators such as Stable Diffusion) | MIT / open-licensed |
-| Held-out test | Organizer-provided, evaluated only during judging | Includes real photos **and** synthetic images from generators *not* in the training set |
-| Additional public data (if used) | e.g. GenImage | Cite source & license here |
+| Real vs AI-generated classification | Implemented | `src/models/model.py`, `app/backend.py` |
+| Mixed-data training and held-out Defactify evaluation | Implemented, recorded experiment | `src/training/train_mixed.py`, `reports/mixed_results.md` |
+| Grad-CAM overlay | Implemented | `src/explainability/gradcam.py`, `app/backend.py` |
+| Generator attribution | Experimental; requires an external checkpoint | `src/attribution/`, `reports/attribution/` |
+| JPEG, resize, blur, and brightness robustness evaluation | Implemented, recorded experiment | `src/robustness/training/test_pipeline.py`, `reports/robustness/robustness_results.csv` |
+| React upload interface and local history | Implemented | `frontend/client/src/` |
+| EXIF/C2PA/provenance verification | Planned / not implemented | No implementation found |
+| Image-text consistency | Planned / not implemented | No implementation found |
+| Active defence or adversarial testing | Planned / not implemented | No implementation found |
+| Calibration or textual grounded explanations | Not implemented | Softmax scores and Grad-CAM only; no calibration/text module found |
 
-Core task evaluation always runs on the organizers' held-out set via the `predict` interface —
-never on data substituted by the team.
+## Technology stack
 
-## 7. Reported metrics
+- Python, PyTorch, torchvision, scikit-learn, pandas, Pillow, OpenCV
+- FastAPI backend with CORS restricted to local development origins
+- React, TypeScript, Vite, Express static server frontend
 
-*(Fill in after training — keep in sync with [`reports/Project_Metadata.md`](reports/Project_Metadata.md))*
+## Repository layout
 
-| Metric | Value |
-|---|---|
-| Overall AUC (held-out) | — |
-| Unseen-generator-split AUC (primary) | — |
-| Macro-F1 | — |
-| Accuracy @ chosen threshold | — |
-| False-positive rate @ chosen threshold | — |
-| Confusion matrix | see `reports/model_report.md` |
+```text
+app/backend.py                  FastAPI inference service
+src/models/                     EfficientNet-B0 binary model and bundled baseline checkpoint
+src/data/                       manifests, loaders, transforms, and Defactify helpers
+src/training/                   CIFAKE and mixed-data training scripts
+src/evaluation/                 CIFAKE, Defactify, and mixed-model evaluators
+src/explainability/             Grad-CAM implementation and CLI
+src/attribution/                experimental six-class attribution
+src/robustness/training/        transformation robustness evaluator
+frontend/                       Vite/React client and Express static server
+reports/                        recorded experiment outputs and reports
+docs/                           operational documentation
+```
 
-## 8. Project metadata
+## Installation and local run
 
-Model name/version, dataset, training date, metrics, and commit history are tracked in
-[`reports/Project_Metadata.md`](reports/Project_Metadata.md) — update this after every
-training run.
+Prerequisites are Python 3.10+ and Node.js 20+ (the frontend metadata uses pnpm 10). From the repository root:
 
-## 9. Known limitations
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m uvicorn app.backend:app --reload --host 127.0.0.1 --port 8000
+```
 
-*(Fill in honestly — which generators or degradations break the model, calibration edge cases, etc.)*
+The tracked classifier checkpoint is `src/models/best_efficientnet_b0.pth`, the backend default. The API starts without the attribution checkpoint; attribution is omitted from responses. Start the frontend in a second terminal:
 
-## 10. Demo video
+```powershell
+Set-Location frontend
+npm install
+npm run dev
+```
 
-🔗 [Link to 3–5 minute demo video] — shows the core running on a new image, plus any bonus modules.
+The frontend defaults to `http://127.0.0.1:8000`; set `VITE_API_URL` before building if the API uses another origin. Full details: [setup](docs/SETUP.md), [configuration](docs/CONFIGURATION.md), and [API](docs/API.md).
 
-## 11. Team & originality
+## Inference
 
-- Team: SIH 2026, Problem Statement 2 (C-433), L. J. Institute of Engineering and Technology
-- Third-party code/notebooks referenced: *(list here — required originality declaration)*
-- AI coding assistants were used during development; the working system and its evaluation are what is scored.
+Use the web UI or send multipart form data to the API:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/predict -F "file=@path\to\image.jpg"
+```
+
+Accepted types are JPEG, PNG, WebP, and BMP. The backend enforces a 15 MB upload limit. It returns a label, probabilities, a Grad-CAM overlay encoded as base64 PNG, and attribution only when its checkpoint is loaded.
+
+For a local Grad-CAM image:
+
+```powershell
+python -m src.explainability.generate_heatmaps --image path\to\image.jpg --output reports\generated\overlay.jpg
+```
+
+## Training and evaluation
+
+The datasets and mixed-model checkpoints are intentionally not tracked (`data/raw/`, `data/processed/`, `model/`, and `experiments/runs/` are ignored). Commands require the documented manifests and images:
+
+```powershell
+python -m src.training.train
+python -m src.training.train_mixed
+python -m src.evaluation.evaluate
+python -m src.evaluation.evaluate_mixed
+python -m src.robustness.training.test_pipeline
+python -m src.attribution.evaluate_30k
+```
+
+These commands are not a single reproducible pipeline from a fresh clone because source datasets and most checkpoints are absent. See [model report](reports/model_report.md), [evaluation report](reports/evaluation_report.md), and [testing](docs/TESTING.md).
+
+## Recorded results
+
+The mixed-model Defactify evaluation contains 600 held-out images: 100 real and 100 each from Stable Diffusion 2.1, SDXL, Stable Diffusion 3, DALL-E 3, and Midjourney 6. At threshold 0.5, recorded metrics are ROC-AUC 0.8788, macro-F1 0.7303, accuracy 0.8200, FPR 0.2700, and FNR 0.1620. These are experiment artifacts, not final production claims.
+
+The CIFAKE-only baseline records ROC-AUC 0.9973, macro-F1 0.9723, and accuracy 0.9723 on its CIFAKE test split; it is not directly comparable to the cross-generator Defactify score. Details and caveats are in [evaluation report](reports/evaluation_report.md).
+
+## Frontend and demo
+
+The interface supports upload, analysis, probability bars, Grad-CAM display, optional attribution display, and browser-local history (up to 12 entries). Insights and Robustness pages display values hard-coded from recorded reports, not live evaluation jobs. See [user guide](docs/USER_GUIDE.md) and [demo script](demo/demo_script.md).
+
+## Limitations and future scope
+
+Performance can vary by generator, domain, compression, resizing, and blur. Dataset and checkpoint provenance for a clean-room reproduction are incomplete. Grad-CAM is a model-attention aid, not a forensic finding. Generator attribution is experimental and does not establish provenance. See [limitations](reports/limitations.md).
+
+Future work includes verified provenance/metadata checks, calibration, reproducible data acquisition, adversarial testing, image-text consistency, benchmark automation, and deployment hardening.
+
+## References and originality
+
+See [REFERENCES.md](REFERENCES.md) for datasets, pretrained components, libraries, and attribution. The project uses torchvision’s EfficientNet-B0 implementation and pretrained ImageNet weights when training scripts request them; SignalScope-specific training, evaluation, FastAPI integration, and frontend code are present in this repository.

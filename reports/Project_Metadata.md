@@ -1,41 +1,16 @@
-# SignalScope — Project Metadata
+# Project Metadata
 
-*Maintained by Member 6. Update this file every time a new model is trained or a new version is
-committed. Keep the most recent entry at the top of the log.*
+## Evidence snapshot
 
-## Current version snapshot
-
-| Field | Value |
+| Item | Repository evidence |
 |---|---|
-| Model name | SignalScope-EffNetB0 |
-| Model version | v0.1 |
-| Backbone | EfficientNet-B0 (transfer learning) |
-| Dataset used | CIFAKE-style real/synthetic set (train/val) + held-out organizer test set |
-| Additional public data (if any) | — |
-| Training date | 2026-09-14 |
-| Overall AUC | — |
-| Unseen-generator-split AUC | — |
-| Macro-F1 | — |
-| Accuracy @ threshold | — |
-| False-positive rate @ threshold | — |
+| Binary architecture | EfficientNet-B0 with a two-output linear classifier |
+| Binary checkpoint tracked | `src/models/best_efficientnet_b0.pth` |
+| Mixed checkpoint path used by scripts | `model/best_efficientnet_b0_mixed.pth` (not tracked) |
+| Attribution checkpoint path | `model/generator_attribution_30k.pth` (not tracked) |
+| Recorded binary cross-generator evaluation | 600-image Defactify run; see `reports/mixed_results.md` |
+| Recorded attribution evaluation | 600-image Defactify run; see `reports/attribution/evaluation_30k.txt` |
+| Training date/version/commit for tracked checkpoint | Not recorded |
+| Calibration artifact | Not implemented / not recorded |
 
-## Version log
-
-Add a new row every time metrics change or a new checkpoint is committed.
-
-| Version | Date | Dataset | Overall AUC | Unseen-split AUC | Macro-F1 | Commit hash | Notes |
-|---|---|---|---|---|---|---|---|
-| v0.1 | 2026-09-14 | CIFAKE-style train/val | — | — | — | — | Initial baseline |
-
-## Notes on fields
-
-- **Model version**: bump this (v0.1 → v0.2 → ...) any time the architecture, training data, or
-  calibration method changes materially.
-- **Dataset used**: always list the core organizer-provided dataset plus any additional public
-  datasets (e.g. GenImage), with citation, per the submission contract's data rules.
-- **Training date**: the date the checkpoint being reported was actually trained, not the date
-  this file was edited.
-- **AUC values**: report both overall held-out AUC and the unseen-generator-split AUC separately —
-  the unseen-split AUC is the primary ranking metric for this challenge.
-- **Commit hash**: the exact commit the reported numbers correspond to, so results are
-  reproducible from the README.
+The earlier metadata table labelled a CIFAKE-style/organizer dataset and a 2026-09-14 training date as the current model snapshot. Neither is tied to the tracked checkpoint by a committed manifest, history, or commit hash, so it is not presented as verified metadata.
