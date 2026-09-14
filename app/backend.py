@@ -20,6 +20,8 @@ from src.attribution.model import (
     GENERATOR_CLASSES,
 )
 
+from src.provenance.extract import analyze_provenance
+
 
 # ==============================================================
 # Configuration
@@ -222,6 +224,18 @@ async def predict_image(
 
         contents = await file.read()
 
+        # ----------------------------------------------------------
+        # Provenance analysis
+        # IMPORTANT: run this BEFORE RGB conversion so metadata
+        # from the original uploaded bytes is still available.
+        # ----------------------------------------------------------
+
+        provenance = analyze_provenance(
+            contents,
+            file.filename,
+            file.content_type,
+        )
+
         image = Image.open(
             BytesIO(contents)
         ).convert("RGB")
@@ -403,6 +417,7 @@ async def predict_image(
             ),
             "top_2": attribution_predictions,
         },
+        "provenance": provenance,
         "message": (
             "This is a likelihood assessment based on "
             "the model's learned visual patterns."

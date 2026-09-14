@@ -10,10 +10,40 @@ export function HistoryPage() {
   return <div className="simple-page product-page"><div className="shell"><PageIntro eyebrow="LOCAL WORKSPACE" title={<>Analysis<br /><em>history.</em></>}><span>Your recent analyses stay on this device only. Nothing is uploaded here, and you can clear the record at any time.</span></PageIntro><div className="product-toolbar"><div><span className="eyebrow">RECENT ANALYSES</span><p>{entries.length ? `${entries.length} saved locally` : "No saved analyses"}</p></div>{entries.length > 0 && <button className="quiet-danger" onClick={() => { clearHistory(); setEntries([]); }}><Trash2 size={14} /> Clear history</button>}</div>{entries.length ? <div className="history-list">{entries.map((entry) => <HistoryRow key={entry.id} entry={entry} onDelete={() => { deleteHistory(entry.id); setEntries(getHistory()); }} />)}</div> : <div className="empty-product"><span className="empty-product__icon"><HistoryIcon size={22} /></span><h2>No analyses yet</h2><p>Your analyzed images will appear here.</p><Link href="/analyze" className="button button--primary">Analyze an image <ArrowRight size={16} /></Link></div>}</div></div>;
 }
 
-function HistoryRow({ entry, onDelete }: { entry: HistoryEntry; onDelete: () => void }) { const ai = entry.label.toLowerCase().includes("ai"); return <article className="history-row"><div className="history-thumb">{entry.thumbnail ? <img src={entry.thumbnail} alt="" /> : <Database size={20} />}</div><div className="history-info"><strong title={entry.filename}>{entry.filename || "Untitled image"}</strong><span className={`history-verdict ${ai ? "history-verdict--ai" : "history-verdict--real"}`}><i /> Likely {ai ? "AI Generated" : "Real"}</span><span className="mono">{Math.round(entry.confidence * 100)}% confidence · {new Date(entry.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span></div><div className="history-actions"><Link href={`/analyze?historyId=${entry.id}`}>
-  Re-analyze
-  <ArrowRight size={16} />
-</Link><button className="icon-button" onClick={onDelete} aria-label={`Delete ${entry.filename || "analysis"}`}><Trash2 size={16} /></button></div></article>; }
+function HistoryRow({ entry, onDelete }: { entry: HistoryEntry; onDelete: () => void }) {
+  const ai = entry.label.toLowerCase().includes("ai");
+  return (
+    <article className="history-row">
+      <div className="history-thumb">
+        {entry.thumbnail ? <img src={entry.thumbnail} alt="" /> : <Database size={20} />}
+      </div>
+      <div className="history-info">
+        <strong title={entry.filename}>{entry.filename || "Untitled image"}</strong>
+        <span className={`history-verdict ${ai ? "history-verdict--ai" : "history-verdict--real"}`}>
+          <i /> Likely {ai ? "AI Generated" : "Real"}
+        </span>
+        <span className="mono">
+          {Math.round(entry.confidence * 100)}% confidence · {new Date(entry.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+        </span>
+        {entry.attribution?.generator && (
+          <span className="mono" style={{ fontSize: "10px", color: "var(--muted)" }}>
+            Attribution: {entry.attribution.generator} ({Math.round(entry.attribution.confidence * 100)}%)
+          </span>
+        )}
+        {entry.provenance?.summary && (
+          <span className="mono" style={{ fontSize: "10px", color: "var(--muted)" }}>
+            Provenance: {entry.provenance.summary}
+          </span>
+        )}
+      </div>
+      <div className="history-actions">
+        <button className="icon-button" onClick={onDelete} aria-label={`Delete ${entry.filename || "analysis"}`}>
+          <Trash2 size={16} />
+        </button>
+      </div>
+    </article>
+  );
+}
 
 const unavailable = "Awaiting final evaluation";
 

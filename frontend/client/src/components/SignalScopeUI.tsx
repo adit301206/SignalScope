@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   AlertTriangle,
   ArrowRight,
+  Camera,
   Check,
   ChevronDown,
   FileImage,
@@ -16,7 +17,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import type { AnalysisResult, GeneratorAttribution, GeneratorCandidate } from "@/api/analysis";
+import type { AnalysisResult, GeneratorAttribution, GeneratorCandidate, Provenance } from "@/api/analysis";
 import { useTheme } from "@/contexts/ThemeContext";
 
 export function BrandMark() {
@@ -192,6 +193,135 @@ export function GeneratorAttributionCard({ attribution }: { attribution?: Genera
   );
 }
 
+export function ProvenanceCard({ provenance }: { provenance?: Provenance }) {
+  if (!provenance) {
+    return null;
+  }
+
+  const c2pa = provenance.c2pa || { status: "unavailable", verified: false };
+  const exif = provenance.exif || { present: false, gps_present: false };
+
+  let c2paStatusLabel = "C2PA Verification Unavailable";
+  let c2paVariant: "verified" | "failed" | "normal" | "muted" = "muted";
+
+  switch (c2pa.status) {
+    case "verified":
+      c2paStatusLabel = "Verified C2PA Content Credentials";
+      c2paVariant = "verified";
+      break;
+    case "verification_failed":
+      c2paStatusLabel = "C2PA Credentials Found — Verification Failed";
+      c2paVariant = "failed";
+      break;
+    case "not_detected":
+      c2paStatusLabel = "No C2PA Content Credentials Detected";
+      c2paVariant = "normal";
+      break;
+    case "unavailable":
+    default:
+      c2paStatusLabel = "C2PA Verification Unavailable";
+      c2paVariant = "muted";
+      break;
+  }
+
+  const cameraInfo = [exif.camera_make, exif.camera_model].filter(Boolean).join(" ");
+  const hasExifFields = Boolean(
+    cameraInfo || exif.software || exif.datetime || exif.orientation || exif.gps_present
+  );
+
+  return (
+    <div className="provenance-block">
+      <div className="provenance-block__header">
+        <span className="eyebrow">PROVENANCE & METADATA</span>
+      </div>
+      <div className="provenance-card">
+        <div className="provenance-section">
+          <div className="provenance-section__title">
+            <ShieldCheck size={15} />
+            <span>C2PA CONTENT CREDENTIALS</span>
+          </div>
+          <div className={`provenance-badge provenance-badge--${c2paVariant}`}>
+            <span className="provenance-badge__dot" />
+            <span>{c2paStatusLabel}</span>
+          </div>
+          {c2pa.verified && (c2pa.title || c2pa.creator) && (
+            <dl className="provenance-details">
+              {c2pa.title && (
+                <div>
+                  <dt>Title</dt>
+                  <dd>{c2pa.title}</dd>
+                </div>
+              )}
+              {c2pa.creator && (
+                <div>
+                  <dt>Creator</dt>
+                  <dd>{c2pa.creator}</dd>
+                </div>
+              )}
+            </dl>
+          )}
+        </div>
+
+        <div className="provenance-section">
+          <div className="provenance-section__title">
+            <Camera size={15} />
+            <span>EXIF METADATA</span>
+          </div>
+          {!exif.present ? (
+            <p className="provenance-empty">No EXIF metadata detected</p>
+          ) : (
+            <dl className="provenance-details">
+              {cameraInfo ? (
+                <div>
+                  <dt>Camera</dt>
+                  <dd>{cameraInfo}</dd>
+                </div>
+              ) : null}
+              {exif.software ? (
+                <div>
+                  <dt>Software</dt>
+                  <dd>{exif.software}</dd>
+                </div>
+              ) : null}
+              {exif.datetime ? (
+                <div>
+                  <dt>Date / Time</dt>
+                  <dd>{exif.datetime}</dd>
+                </div>
+              ) : null}
+              {exif.orientation ? (
+                <div>
+                  <dt>Orientation</dt>
+                  <dd>{exif.orientation}</dd>
+                </div>
+              ) : null}
+              {exif.gps_present ? (
+                <div>
+                  <dt>GPS Metadata</dt>
+                  <dd className="provenance-gps">GPS metadata present</dd>
+                </div>
+              ) : null}
+              {!hasExifFields && (
+                <div>
+                  <dt>Status</dt>
+                  <dd>Metadata header present</dd>
+                </div>
+              )}
+            </dl>
+          )}
+        </div>
+
+        <div className="provenance-disclaimer">
+          <Info size={14} className="provenance-disclaimer__icon" />
+          <p>
+            Provenance metadata provides additional context about an image's history when available. Its absence does not mean an image is AI-generated.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ProbabilityBars({ result }: { result: AnalysisResult }) {
   return <div className="probability-block"><div className="probability-row"><div><span>AI Generated</span><strong>{percent(result.probability_ai)}</strong></div><div className="probability-track"><span className="probability-fill probability-fill--ai" style={{ "--fill": percent(result.probability_ai) } as React.CSSProperties} /></div></div><div className="probability-row"><div><span>Likely Real</span><strong>{percent(result.probability_real)}</strong></div><div className="probability-track"><span className="probability-fill probability-fill--real" style={{ "--fill": percent(result.probability_real) } as React.CSSProperties} /></div></div></div>;
 }
@@ -206,7 +336,7 @@ export function ResultView({ result, file, onReset }: { result: AnalysisResult; 
   const isAI = result.label.toLowerCase().includes("ai");
   return <div className="results-wrap">
     <div className="result-hero"><div className="result-hero__heading"><span className={`verdict-mark ${isAI ? "verdict-mark--ai" : "verdict-mark--real"}`}>{isAI ? <AlertTriangle size={22} /> : <Check size={22} />}</span><div><span className="eyebrow">MODEL ASSESSMENT</span><h2>Likely {isAI ? "AI Generated" : "Real"}</h2><p>{result.message || "The model has returned a confidence-based likelihood assessment for this image."}</p></div></div><div className="confidence"><span>CONFIDENCE</span><strong>{percent(result.confidence)}</strong><div className={`confidence-bar ${isAI ? "confidence-bar--ai" : "confidence-bar--real"}`}><i style={{ width: percent(result.confidence) }} /></div></div></div>
-    <div className="result-grid"><div className="result-main"><ProbabilityBars result={result} />{result.attribution && <GeneratorAttributionCard attribution={result.attribution} />}<ImageComparison file={file} heatmap={result.heatmap_image} /><div className="signal-profile" aria-label="Decorative signal profile"><div className="signal-profile__head"><span className="eyebrow">VISUAL DESIGN ELEMENT</span><span className="mono">NOT MODEL DATA</span></div><div className="signal-profile__wave" /><p>Abstract signal profile for visual continuity — not a measurement returned by the classifier.</p></div></div><aside className="result-side"><div className="info-card"><div className="info-card__title"><Info size={16} /><span>Why this result?</span></div><p>Highlighted regions contributed more strongly to the model’s prediction. The Grad-CAM view is an explanation aid that helps inspect model attention, not proof of image origin.</p></div><div className="info-card info-card--muted"><div className="info-card__title"><ShieldCheck size={16} /><span>Use with care</span></div><p>Detection is probabilistic. Performance can vary across generators, transformations, compression, and image domains.</p></div><div className="tech-card"><div className="tech-card__title">TECHNICAL DETAILS</div><dl><div><dt>File name</dt><dd title={file.name}>{file.name}</dd></div><div><dt>File type</dt><dd>{file.type || "Unknown"}</dd></div><div><dt>Dimensions</dt><dd>Not returned</dd></div><div><dt>Model</dt><dd>SignalScope classifier</dd></div><div><dt>Status</dt><dd className="status-inline"><span className="status-dot" /> Complete</dd></div></dl></div></aside></div>
+    <div className="result-grid"><div className="result-main"><ProbabilityBars result={result} />{result.attribution && <GeneratorAttributionCard attribution={result.attribution} />}<ImageComparison file={file} heatmap={result.heatmap_image} />{result.provenance && <ProvenanceCard provenance={result.provenance} />}<div className="signal-profile" aria-label="Decorative signal profile"><div className="signal-profile__head"><span className="eyebrow">VISUAL DESIGN ELEMENT</span><span className="mono">NOT MODEL DATA</span></div><div className="signal-profile__wave" /><p>Abstract signal profile for visual continuity — not a measurement returned by the classifier.</p></div></div><aside className="result-side"><div className="info-card"><div className="info-card__title"><Info size={16} /><span>Why this result?</span></div><p>Highlighted regions contributed more strongly to the model’s prediction. The Grad-CAM view is an explanation aid that helps inspect model attention, not proof of image origin.</p></div><div className="info-card info-card--muted"><div className="info-card__title"><ShieldCheck size={16} /><span>Use with care</span></div><p>Detection is probabilistic. Performance can vary across generators, transformations, compression, and image domains.</p></div><div className="tech-card"><div className="tech-card__title">TECHNICAL DETAILS</div><dl><div><dt>File name</dt><dd title={file.name}>{file.name}</dd></div><div><dt>File type</dt><dd>{file.type || "Unknown"}</dd></div><div><dt>Dimensions</dt><dd>Not returned</dd></div><div><dt>Model</dt><dd>SignalScope classifier</dd></div><div><dt>Status</dt><dd className="status-inline"><span className="status-dot" /> Complete</dd></div></dl></div></aside></div>
     <div className="result-actions"><button className="button button--primary" onClick={onReset}>Analyze another image <ArrowRight size={17} /></button><span className="result-note"><ShieldCheck size={15} /> No image is stored by this interface.</span></div>
   </div>;
 }
