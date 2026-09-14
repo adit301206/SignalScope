@@ -1,3 +1,8 @@
+import base64
+import io
+
+from src.explainability.heatmap_utils import create_overlay
+
 from io import BytesIO
 from pathlib import Path
 
@@ -8,6 +13,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.models.model import create_model
 from src.data.transforms import get_eval_transforms
+from src.explainability.gradcam import GradCAM
+
+from src.attribution.model import (
+    create_attribution_model,
+    GENERATOR_CLASSES,
+)
 
 
 # ==============================================================
@@ -20,6 +31,10 @@ DEVICE = torch.device(
 
 CHECKPOINT_PATH = Path(
     "model/best_efficientnet_b0_mixed.pth"
+)
+
+ATTRIBUTION_CHECKPOINT_PATH = Path(
+    "model/generator_attribution_30k.pth"
 )
 
 IMAGE_SIZE = 224
@@ -46,6 +61,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -93,6 +110,53 @@ model = model.to(DEVICE)
 model.eval()
 
 transform = get_eval_transforms()
+
+# ==============================================================
+# Generator Attribution Model
+# ==============================================================
+
+print(
+    f"Loading attribution checkpoint: "
+    f"{ATTRIBUTION_CHECKPOINT_PATH}"
+)
+
+attribution_model = create_attribution_model(
+    pretrained=False
+)
+
+attribution_checkpoint = torch.load(
+    ATTRIBUTION_CHECKPOINT_PATH,
+    map_location=DEVICE,
+)
+
+if "model_state_dict" in attribution_checkpoint:
+    attribution_state_dict = attribution_checkpoint[
+        "model_state_dict"
+    ]
+else:
+    attribution_state_dict = attribution_checkpoint
+
+attribution_model.load_state_dict(
+    attribution_state_dict
+)
+
+attribution_model = attribution_model.to(DEVICE)
+attribution_model.eval()
+
+print("Generator attribution model loaded.")
+
+# ==============================================================
+# Grad-CAM setup
+# ==============================================================
+
+target_layer = model.features[-1]
+
+gradcam = GradCAM(
+    model,
+    target_layer
+)
+
+print("Grad-CAM initialized.")
 
 print("Model loaded successfully.")
 print("=" * 60)
@@ -185,6 +249,10 @@ async def predict_image(
     # Model prediction
     # ----------------------------------------------------------
 
+    # ----------------------------------------------------------
+# Model prediction
+# ----------------------------------------------------------
+
     with torch.no_grad():
 
         outputs = model(
@@ -195,6 +263,95 @@ async def predict_image(
             outputs,
             dim=1
         )[0]
+
+    # ----------------------------------------------------------
+    # Generator Attribution Prediction
+    # ----------------------------------------------------------
+
+    with torch.no_grad():
+
+        attribution_outputs = attribution_model(
+            image_tensor
+        )
+
+        attribution_probabilities = torch.softmax(
+            attribution_outputs,
+            dim=1
+        )[0]
+
+    attribution_top2 = torch.topk(
+        attribution_probabilities,
+        k=2
+    )
+
+    attribution_predictions = []
+
+    for score, class_index in zip(
+        attribution_top2.values,
+        attribution_top2.indices,
+    ):
+        attribution_predictions.append({
+            "generator": GENERATOR_CLASSES[
+                int(class_index.item())
+            ],
+            "confidence": round(
+                float(score.item()),
+                4
+            ),
+        })
+
+    attribution_class = int(
+        torch.argmax(
+            attribution_probabilities
+        ).item()
+    )
+
+    attribution_generator = GENERATOR_CLASSES[
+        attribution_class
+    ]
+
+    attribution_confidence = float(
+        attribution_probabilities[
+            attribution_class
+        ].item()
+    )
+
+    predicted_class = int(
+        torch.argmax(
+            probabilities
+        ).item()
+    )
+
+    # ----------------------------------------------------------
+    # Generate Grad-CAM
+    # ----------------------------------------------------------
+
+    with torch.enable_grad():
+
+        cam = gradcam.generate(
+            image_tensor,
+            predicted_class
+        )
+
+    # ----------------------------------------------------------
+    # Create visual heatmap overlay
+    # ----------------------------------------------------------
+
+    heatmap_image = create_overlay(
+        image,
+        cam
+    )
+
+    buffer = io.BytesIO()
+
+    heatmap_image.save(
+        buffer,
+        format="PNG"
+    )
+
+    heatmap_base64 = base64.b64encode(
+        buffer.getvalue()
+    ).decode("utf-8")
 
     real_probability = float(
         probabilities[0].item()
@@ -237,6 +394,15 @@ async def predict_image(
             4
         ),
         "filename": file.filename,
+        "heatmap_image": heatmap_base64,
+        "attribution": {
+            "generator": attribution_generator,
+            "confidence": round(
+                attribution_confidence,
+                4
+            ),
+            "top_2": attribution_predictions,
+        },
         "message": (
             "This is a likelihood assessment based on "
             "the model's learned visual patterns."
