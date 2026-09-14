@@ -9,6 +9,36 @@ export interface GeneratorAttribution {
   top_2?: GeneratorCandidate[];
 }
 
+export interface ProvenanceC2PA {
+  status: string;
+  verified: boolean;
+  title?: string | null;
+  creator?: string | null;
+  manifest_present?: boolean;
+  validation_state?: string | null;
+  validation_results?: string | null;
+  error?: string;
+}
+
+export interface ProvenanceExif {
+  present: boolean;
+  camera_make?: string | null;
+  camera_model?: string | null;
+  software?: string | null;
+  datetime?: string | null;
+  orientation?: string | null;
+  gps_present: boolean;
+}
+
+export interface Provenance {
+  status: string;
+  filename?: string | null;
+  content_type?: string | null;
+  c2pa: ProvenanceC2PA;
+  exif: ProvenanceExif;
+  summary: string;
+}
+
 export interface AnalysisResult {
   label: string;
   confidence: number;
@@ -18,6 +48,7 @@ export interface AnalysisResult {
   message: string;
   heatmap_image: string;
   attribution?: GeneratorAttribution;
+  provenance?: Provenance;
 }
 
 const API_URL =
@@ -83,5 +114,6 @@ export async function analyzeImage(file: File): Promise<AnalysisResult> {
         : `data:image/png;base64,${data.heatmap_image}`
       : "",
     attribution: data.attribution,
+    provenance: data.provenance,
   };
 }

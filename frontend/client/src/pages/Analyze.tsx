@@ -62,29 +62,26 @@ export default function Analyze() {
 
     const entry = getHistory().find((item) => item.id === historyId);
 
-    if (!entry?.thumbnail) {
-      setError("The saved image could not be found. Please upload it again.");
-      setState("error");
-      return;
+    if (entry?.thumbnail) {
+      try {
+        const restoredFile = dataUrlToFile(
+          entry.thumbnail,
+          entry.filename || "re-analyzed-image.jpg",
+          entry.fileType || "image/jpeg"
+        );
+
+        setFile(restoredFile);
+        setResult(null);
+        setError("");
+        setState("ready");
+        return;
+      } catch {
+        // Fall through to clearing parameter
+      }
     }
 
-    try {
-      const restoredFile = dataUrlToFile(
-        entry.thumbnail,
-        entry.filename || "re-analyzed-image.jpg",
-        entry.fileType || "image/jpeg"
-      );
-
-      setFile(restoredFile);
-      setResult(null);
-      setError("");
-      setState("ready");
-    } catch {
-      setError(
-        "The saved image could not be restored. Please upload it again."
-      );
-      setState("error");
-    }
+    // If entry has no thumbnail, clear historyId parameter cleanly
+    window.history.replaceState({}, "", "/analyze");
   }, []);
 
   const chooseFile = (next: File) => {
@@ -117,19 +114,14 @@ export default function Analyze() {
       setState("result");
 
       /*
-       * Do not store the Grad-CAM base64 image in history.
-       * The thumbnail is stored locally for History/Re-analyze.
+       * Save lightweight metadata entry to local history defensively.
+       * Large base64 image data is automatically excluded.
        */
-      const {
-        heatmap_image: _heatmap,
-        ...historySafeResult
-      } = response;
-
-      saveHistory({
-        ...historySafeResult,
-        thumbnail: await fileToDataUrl(file),
-        fileType: file.type,
-      });
+      try {
+        saveHistory(response, file.type);
+      } catch (saveErr) {
+        console.warn("Could not save to local history:", saveErr);
+      }
     } catch (err) {
       let message =
         "The image could not be analyzed right now. Try again with another image.";
