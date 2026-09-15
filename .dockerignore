@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+.github/
+data/
+experiments/
+reports/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.ipynb
+*.log

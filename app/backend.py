@@ -1,5 +1,6 @@
 import base64
 import io
+import os
 
 from src.explainability.heatmap_utils import create_overlay
 
@@ -58,14 +59,23 @@ app = FastAPI(
 # Allows the React frontend to communicate with this API.
 # ==============================================================
 
+allowed_origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+]
+
+cors_origins = os.getenv("CORS_ORIGINS")
+if cors_origins:
+    for origin in cors_origins.split(","):
+        cleaned = origin.strip()
+        if cleaned:
+            allowed_origins.append(cleaned)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
