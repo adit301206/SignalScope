@@ -1,135 +1,765 @@
 # SignalScope
 
-**Telling Real From Synthetic in the Age of Generative Media**
-SIH 2026 — Problem Statement 2 (C-433) — L. J. Institute of Engineering and Technology
+### Telling Real From Synthetic in the Age of Generative Media
 
-SignalScope classifies an input image as **real** or **AI-generated**, reports performance on a
-held-out test set that includes images from generators unseen during training, and produces a
-faithful, human-readable explanation of the visual cues behind each verdict.
+SignalScope is an end-to-end computer-vision system for assessing whether an image is **likely real or AI-generated**. Instead of treating detection as a binary accusation, SignalScope combines a trained visual detector with explainability, generator attribution, robustness analysis, and provenance signals.
 
-> Outputs are always framed as a likelihood ("likely AI-generated"), never an accusation. This
-> project detects AI-generated imagery in general (scenes, objects, art, product shots) — it does
-> **not** do face-swap deepfake detection of real individuals and does **not** adjudicate
-> political claims or real-world events.
+Built for **SIH 2026 — Internal Hackathon**.
 
 ---
 
-## 1. Modules built
+## ✨ What SignalScope Does
 
-| Module | Status |
-|---|---|
-| **Core** — real vs AI-generated classification | ✅ Required |
-| A. Faithful explanation (Grad-CAM + grounded text) | ⬜ |
-| B. Generator attribution | ⬜ |
-| C. Robustness to degradation | ⬜ |
-| D. Provenance & metadata (C2PA / EXIF) | ⬜ |
-| E. Multimodal image–text consistency | ⬜ |
-| F. Real-time / deployable interface | ⬜ |
-| G. Active defence / adversarial analysis | ⬜ |
+Given a single image, SignalScope can provide:
 
-*Update the checkboxes above as modules are completed.*
+- **Real vs. AI-generated classification**
+- **Confidence / probability scores**
+- **Grad-CAM visual explanation** showing image regions that influenced the detector
+- **AI generator attribution** across supported generator classes
+- **Robustness evaluation** under common image degradations
+- **EXIF metadata inspection**
+- **C2PA / Content Credentials inspection**
+- A web interface for interactive analysis
+- A FastAPI backend for model inference
 
-## 2. Problem statement
+> **Important:** SignalScope provides a likelihood-based assessment. It is not proof of image origin, and provenance/metadata signals should not be interpreted as proof that an image is real or AI-generated.
 
-Text-to-image models can now produce photorealistic images in seconds, which is fueling
-misinformation, fraud, fake product listings, and manipulated "evidence." The hard part is not
-just classifying real vs. fake — detectors that perform well on generators seen during training
-often fail on images from a new, unseen generator, which is exactly the situation that matters in
-the real world. A verdict alone is also not enough to build trust: without a clear explanation of
-*why* an image was flagged, users have no way to judge or act on the result.
+---
 
-See [`reports/Problem-Statement.md`](reports/Problem-Statement.md)
-for the full write-up.
+## 🏆 SIH Modules Implemented
 
-## 3. Proposed solution / architecture
+| Module | Status | Implementation |
+|---|---|---|
+| Core: Real vs. AI detection | ✅ | EfficientNet-B0 classifier |
+| Bonus A: Explanation | ✅ | Grad-CAM heatmap |
+| Bonus B: Generator attribution | ✅ | Multi-class attribution model |
+| Bonus C: Robustness | ✅ | JPEG, resize, blur, brightness evaluation |
+| Bonus D: Provenance | ✅ | EXIF + C2PA |
+| Bonus F: Deployable interface | ✅ | React/Vite frontend + FastAPI backend |
+| Bonus E: Image-text consistency | ❌ | Not implemented |
+| Bonus G: Active defence | ❌ | Not implemented |
 
+---
+
+# 🧠 System Overview
+
+```text
+                         ┌──────────────────────┐
+                         │      User Image      │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │  Image Preprocessing │
+                         │      224 × 224       │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                    ┌──────────────────────────────┐
+                    │   EfficientNet-B0 Detector   │
+                    │      Real vs AI-generated    │
+                    └──────────────┬───────────────┘
+                                   │
+                    ┌──────────────┼──────────────┐
+                    ▼              ▼              ▼
+             ┌────────────┐ ┌────────────┐ ┌───────────────┐
+             │   Verdict  │ │  Grad-CAM  │ │  Attribution  │
+             │ + confidence│ │  heatmap   │ │  generator    │
+             └────────────┘ └────────────┘ └───────────────┘
+                                   │
+                                   ▼
+                         ┌──────────────────────┐
+                         │   Provenance Layer   │
+                         │    EXIF + C2PA       │
+                         └──────────────────────┘
+                                   │
+                                   ▼
+                         ┌──────────────────────┐
+                         │   Responsible UI     │
+                         └──────────────────────┘
 ```
-Image → Preprocessing → EfficientNet-B0 → Probability → Calibration → Real/AI → Grad-CAM → Explanation
+
+The detector uses **EfficientNet-B0 pretrained on ImageNet** and is fine-tuned for binary classification.
+
+---
+
+# 📊 Model & Evaluation
+
+## Final detector
+
+- **Backbone:** EfficientNet-B0
+- **Pretrained:** ImageNet
+- **Input size:** 224 × 224
+- **Classes:**
+  - `0` → Real
+  - `1` → AI-generated
+- **Inference threshold:** 0.5
+- **Automatic device selection:** CUDA when available, otherwise CPU
+
+The inference checkpoint included in this repository is:
+
+```text
+model/best_efficientnet_b0_mixed.pth
 ```
 
-- **Preprocessing** — resize, normalize, and augment for robustness to compression/resizing/screenshots.
-- **EfficientNet-B0** — transfer-learning CNN backbone for feature extraction.
-- **Probability** — raw real-vs-AI-generated likelihood from the backbone.
-- **Calibration** — temperature scaling so confidence scores are honest, not just high.
-- **Real / AI verdict** — calibrated probability thresholded into a label + confidence.
-- **Grad-CAM** — saliency heat-map showing which regions drove the decision.
-- **Explanation** — grounded, human-readable text describing the visual cues, generated from the heat-map.
+Generator attribution uses:
 
-Full rationale in [`reports/Proposed-Solution.md`](reports/Proposed-Solution.md).
-
-## 4. Repository structure
-
+```text
+model/generator_attribution_30k.pth
 ```
+
+---
+
+## Training data
+
+### CIFAKE
+
+CIFAKE contains 120,000 images:
+
+- 60,000 real images derived from CIFAR-10
+- 60,000 AI-generated images produced using Stable Diffusion 1.4
+- 100,000 training images
+- 20,000 test images
+
+For SignalScope, the CIFAKE training split was used as the main training distribution.
+
+Source:
+
+- https://www.kaggle.com/datasets/birdy654/cifake-real-and-ai-generated-synthetic-images
+- https://github.com/jordan-bird/CIFAKE-Real-and-AI-Generated-Synthetic-Images
+
+CIFAKE is published under the MIT license stated by its dataset source.
+
+### Defactify
+
+Defactify provides real images plus AI-generated images from:
+
+- Stable Diffusion 2.1
+- Stable Diffusion XL
+- Stable Diffusion 3
+- DALL-E 3
+- Midjourney 6
+
+The dataset contains 96,000 images overall.
+
+Source:
+
+- https://huggingface.co/datasets/Rajarshi-Roy-research/Defactify_Image_Dataset
+- Paper: https://arxiv.org/abs/2601.00553
+
+For SignalScope, Defactify was used to improve cross-generator generalization and for held-out evaluation.
+
+---
+
+# 🔬 Data Split & Generalization Strategy
+
+The important goal was not simply to achieve high accuracy on images similar to the training data.
+
+The project specifically evaluates **generalization to generators outside the original CIFAKE distribution**.
+
+### Training
+
+```text
+CIFAKE training set
+        +
+1,000 Defactify training samples
+        ↓
+Mixed training set
+        ↓
+EfficientNet-B0
+```
+
+The mixed training set contained:
+
+- 90,000 CIFAKE training images
+- 1,000 Defactify training images
+- **91,000 training images total**
+
+CIFAKE validation data was kept separate for model selection.
+
+### Held-out evaluation
+
+The final unseen-generator evaluation used **600 Defactify images**:
+
+- 100 real
+- 100 Stable Diffusion 2.1
+- 100 SDXL
+- 100 Stable Diffusion 3
+- 100 DALL-E 3
+- 100 Midjourney 6
+
+This evaluation set was not used for threshold tuning.
+
+---
+
+# 📈 Results
+
+## Held-out Defactify evaluation
+
+| Metric | Result |
+|---|---:|
+| ROC-AUC | **0.8790** |
+| Macro-F1 | **0.7303** |
+| Accuracy | **82.00%** |
+| False Positive Rate | **27.00%** |
+| False Negative Rate | **16.20%** |
+
+### Confusion matrix
+
+```text
+                  Predicted
+                Real      AI
+Actual Real      73       27
+Actual AI        81      419
+```
+
+---
+
+## Generator-wise detection
+
+| Generator | Detection Accuracy |
+|---|---:|
+| DALL-E 3 | **96.0%** |
+| Midjourney 6 | **85.0%** |
+| SDXL | **83.0%** |
+| Stable Diffusion 2.1 | **82.0%** |
+| Stable Diffusion 3 | **73.0%** |
+
+The variation across generators is important: it demonstrates that AI-image detection is a **generalization problem**, not simply an in-distribution classification problem.
+
+---
+
+## Baseline comparison
+
+The original CIFAKE-only baseline performed strongly on its familiar distribution but generalized poorly to the unseen Defactify distribution.
+
+On the same 600-image held-out evaluation:
+
+| Model | ROC-AUC | Macro-F1 | Accuracy | FPR |
+|---|---:|---:|---:|---:|
+| CIFAKE-only baseline | 0.6174 | 0.4545 | 83.33% | 100.00% |
+| Mixed-data model | **0.8790** | **0.7303** | 82.00% | **27.00%** |
+
+The mixed-data model improved held-out ROC-AUC by **+0.2616 absolute** and substantially reduced false positives.
+
+Accuracy alone is not sufficient here because the baseline predicted every image as AI on this evaluation set.
+
+---
+
+# 🛡️ Robustness Evaluation
+
+SignalScope was evaluated under several common image degradations using the held-out Defactify evaluation set.
+
+| Condition | Accuracy | Macro-F1 | ROC-AUC | FPR | FNR |
+|---|---:|---:|---:|---:|---:|
+| Original | 82.00% | 0.7303 | 0.8788 | 27.00% | 16.20% |
+| JPEG quality 50 | 75.00% | 0.6710 | 0.8591 | 22.00% | 25.60% |
+| Resize to 112 | 84.33% | 0.6052 | 0.7720 | 80.00% | 2.80% |
+| Gaussian blur | 82.83% | 0.6738 | 0.7973 | 58.00% | 9.00% |
+| Brightness 115% | 84.17% | 0.7419 | 0.8820 | 34.00% | 12.20% |
+
+These results are reported as degradation-vs-performance evidence rather than as a claim of perfect robustness.
+
+Detailed results are available in:
+
+```text
+reports/robustness/robustness_results.csv
+```
+
+---
+
+# 🔎 Explainability
+
+SignalScope uses **Grad-CAM** to generate a visual heatmap for the detector's prediction.
+
+The purpose is to show which spatial regions contributed most strongly to the model's decision.
+
+The heatmap should be treated as a model-attribution signal, not as a guaranteed human-readable proof of the exact reason an image was generated.
+
+---
+
+# 🧬 Generator Attribution
+
+The attribution model predicts the likely source class among:
+
+```text
+Real
+Stable Diffusion 2.1
+SDXL
+Stable Diffusion 3
+DALL-E 3
+Midjourney 6
+```
+
+This module is intended as an additional signal after the binary real-vs-AI assessment.
+
+It should not be interpreted as definitive proof of which generator produced an image.
+
+---
+
+# 🧾 Provenance
+
+SignalScope checks for two types of provenance information:
+
+### EXIF
+
+The backend can inspect selected metadata such as:
+
+- Camera make
+- Camera model
+- Software
+- Date/time
+- Orientation
+- Whether GPS metadata is present
+
+GPS coordinates themselves are **not exposed by the application**.
+
+### C2PA / Content Credentials
+
+SignalScope attempts to read C2PA Content Credentials from the original image bytes before image preprocessing.
+
+Possible outcomes include:
+
+- C2PA credentials detected
+- C2PA not detected
+- C2PA could not be read
+
+> Absence of C2PA or EXIF metadata does **not** mean that an image is AI-generated.
+
+---
+
+# 🖥️ Project Structure
+
+```text
 SignalScope/
-├── README.md                 ← you are here
-├── requirements.txt
-├── src/               ← source code
-├── model/                     ← training/inference code + predict interface
-│   └── weights/                ← via release link if large
+│
+├── app/
+│   └── backend.py                  # FastAPI inference API
+│
+├── src/
+│   ├── models/                    # Main detector
+│   ├── attribution/               # Generator attribution
+│   ├── explainability/            # Grad-CAM
+│   ├── provenance/                # EXIF + C2PA
+│   ├── evaluation/                # Evaluation scripts
+│   ├── robustness/                # Robustness evaluation
+│   └── data/                      # Dataset/data utilities
+│
+├── model/
+│   ├── best_efficientnet_b0_mixed.pth
+│   └── generator_attribution_30k.pth
+│
+├── frontend/
+│   ├── client/
+│   ├── package.json
+│   └── ...
+│
 ├── reports/
-│   ├── Problem_Statement_and_Solution.md
-│   ├── Project_Metadata.md
-│   └── model_report.md        ← one-page model report (Section 7.3)
-└── demo/                       ← link to demo video, screenshots
+│   ├── model_report.md
+│   └── robustness/
+│       └── robustness_results.csv
+│
+├── Dockerfile
+├── .dockerignore
+├── requirements.txt
+├── requirements-deploy.txt
+├── config.yaml
+└── README.md
 ```
 
-## 5. Setup & run instructions
+---
+
+# 🚀 Quick Start — Run the Full Application Locally
+
+The trained model checkpoints are already included in the repository, so **you do not need to retrain the model or download the training datasets just to run inference**.
+
+## 1. Clone the repository
 
 ```bash
-# 1. Clone the repo
 git clone https://github.com/adit301206/SignalScope.git
 cd SignalScope
-
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Run a prediction on a new image
-python model/predict.py --image path/to/image.jpg
 ```
 
-*A judge should be able to go from clone to a prediction in under ~10 minutes. Update the
-commands above once the actual entry point / CLI (or web app / notebook) is finalized.*
+Checkout the final project branch if required:
 
-## 6. Datasets used
+```bash
+git checkout bonus-d-provenance
+```
 
-| Split | Source | Notes |
-|---|---|---|
-| Train / validation | Organizer-provided CIFAKE-style real-vs-synthetic set (real photos + images from disclosed generators such as Stable Diffusion) | MIT / open-licensed |
-| Held-out test | Organizer-provided, evaluated only during judging | Includes real photos **and** synthetic images from generators *not* in the training set |
-| Additional public data (if used) | e.g. GenImage | Cite source & license here |
+---
 
-Core task evaluation always runs on the organizers' held-out set via the `predict` interface —
-never on data substituted by the team.
+## 2. Create a Python environment
 
-## 7. Reported metrics
+Python **3.12** is recommended.
 
-*(Fill in after training — keep in sync with [`reports/Project_Metadata.md`](reports/Project_Metadata.md))*
+### Windows
 
-| Metric | Value |
-|---|---|
-| Overall AUC (held-out) | — |
-| Unseen-generator-split AUC (primary) | — |
-| Macro-F1 | — |
-| Accuracy @ chosen threshold | — |
-| False-positive rate @ chosen threshold | — |
-| Confusion matrix | see `reports/model_report.md` |
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+```
 
-## 8. Project metadata
+### Linux / macOS
 
-Model name/version, dataset, training date, metrics, and commit history are tracked in
-[`reports/Project_Metadata.md`](reports/Project_Metadata.md) — update this after every
-training run.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
-## 9. Known limitations
+---
 
-*(Fill in honestly — which generators or degradations break the model, calibration edge cases, etc.)*
+## 3. Install backend dependencies
 
-## 10. Demo video
+For the complete inference backend:
 
-🔗 [Link to 3–5 minute demo video] — shows the core running on a new image, plus any bonus modules.
+```bash
+pip install -r requirements-deploy.txt
+```
 
-## 11. Team & originality
+If PyTorch needs to be installed separately on your machine, install a compatible CPU or CUDA build from the official PyTorch instructions before running the backend.
 
-- Team: SIH 2026, Problem Statement 2 (C-433), L. J. Institute of Engineering and Technology
-- Third-party code/notebooks referenced: *(list here — required originality declaration)*
-- AI coding assistants were used during development; the working system and its evaluation are what is scored.
+---
+
+## 4. Start the backend
+
+From the repository root:
+
+```bash
+python -m uvicorn app.backend:app --host 127.0.0.1 --port 8000
+```
+
+The API will be available at:
+
+```text
+http://127.0.0.1:8000
+```
+
+Health check:
+
+```text
+http://127.0.0.1:8000/health
+```
+
+FastAPI documentation:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+The backend automatically uses:
+
+```text
+CUDA → if a compatible GPU is available
+CPU  → otherwise
+```
+
+---
+
+# 🌐 Start the Frontend
+
+Open a second terminal.
+
+```bash
+cd frontend
+npm install
+```
+
+Create or verify:
+
+```text
+frontend/.env
+```
+
+with:
+
+```env
+VITE_API_URL=http://127.0.0.1:8000
+VITE_USE_MOCK=false
+```
+
+Then start the frontend:
+
+```bash
+npm run dev
+```
+
+Vite will display the local frontend URL, normally:
+
+```text
+http://localhost:5173
+```
+
+Open that address in a browser.
+
+---
+
+# 🧪 Judge Demo Flow
+
+A judge can verify the main system with the following sequence:
+
+### 1. Open SignalScope
+
+Go to the frontend URL.
+
+### 2. Upload an image
+
+Supported formats:
+
+```text
+JPG
+PNG
+WEBP
+BMP
+```
+
+### 3. Run analysis
+
+SignalScope returns:
+
+- Real / AI-generated likelihood
+- Confidence
+- Class probabilities
+- Grad-CAM heatmap
+- Generator attribution
+- EXIF information
+- C2PA information
+
+### 4. Inspect model evidence
+
+The **Insights** page contains the held-out evaluation results and unseen-generator performance.
+
+The **Robustness** page contains degradation results.
+
+The **How It Works** page explains the analysis pipeline.
+
+---
+
+# 🔌 API
+
+## Health
+
+```http
+GET /health
+```
+
+Example:
+
+```json
+{
+  "status": "healthy",
+  "model_loaded": true,
+  "device": "cuda"
+}
+```
+
+The device value will be `cpu` when CUDA is unavailable.
+
+## Prediction
+
+```http
+POST /predict
+```
+
+Send the image as multipart form data using the `file` field.
+
+Example with curl:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/predict" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@path/to/image.jpg"
+```
+
+The response includes the model verdict, confidence/probabilities, Grad-CAM output, generator attribution, and provenance information.
+
+---
+
+# 🧪 Reproducing Evaluation
+
+The repository also contains scripts for training and evaluation.
+
+The main training/evaluation utilities are located under:
+
+```text
+src/
+```
+
+and the training entry points are in the repository root / evaluation modules.
+
+For judging the submitted system, **use the included trained checkpoints** rather than retraining from scratch.
+
+The reported results were produced from the documented held-out evaluation procedure and should not be reproduced by tuning the decision threshold on the 600-image test set.
+
+---
+
+# 📄 Reports
+
+The repository contains the model report:
+
+```text
+reports/model_report.md
+```
+
+and robustness results:
+
+```text
+reports/robustness/robustness_results.csv
+```
+
+These provide the detailed experiment and evaluation record behind the results shown in the application.
+
+---
+
+# ⚠️ Known Limitations
+
+SignalScope is intentionally presented as a probabilistic detection system.
+
+Important limitations include:
+
+1. **Unseen-generator performance varies.**  
+   The model performs differently across DALL-E 3, Midjourney 6, SDXL, SD2.1 and SD3.
+
+2. **Image degradation can affect performance.**  
+   Compression, resizing and blur can change the detector's behavior.
+
+3. **Grad-CAM is not proof.**  
+   A highlighted region indicates model attribution, not a guaranteed causal explanation.
+
+4. **Generator attribution is probabilistic.**  
+   It should not be treated as forensic proof of the exact generation system.
+
+5. **Metadata is incomplete by nature.**  
+   Missing EXIF or C2PA information does not establish that an image is synthetic.
+
+6. **The system should not be used as the sole basis for consequential authenticity decisions.**
+
+---
+
+# 🔐 Responsible AI
+
+SignalScope deliberately uses language such as:
+
+> **Likely AI-generated**
+
+rather than:
+
+> **This image is definitely AI-generated.**
+
+The goal is to communicate model uncertainty and reduce overclaiming.
+
+Provenance information is shown as supporting evidence rather than as a replacement for visual analysis.
+
+---
+
+# 🧰 Technology Stack
+
+### Machine Learning
+
+- Python
+- PyTorch
+- Torchvision
+- EfficientNet-B0
+- Scikit-learn
+- OpenCV
+- Grad-CAM
+
+### Backend
+
+- FastAPI
+- Uvicorn
+- Pillow
+- C2PA Python
+- EXIF metadata extraction
+
+### Frontend
+
+- React
+- TypeScript
+- Vite
+- CSS
+- Lucide icons
+
+---
+
+# 📚 References & Attribution
+
+### Datasets
+
+**CIFAKE — Real and AI-Generated Synthetic Images**
+
+Jordan J. Bird and Ahmed Lotfi, *CIFAKE: Image Classification and Explainable Identification of AI-Generated Synthetic Images*, IEEE Access, 2024.
+
+Dataset:
+https://www.kaggle.com/datasets/birdy654/cifake-real-and-ai-generated-synthetic-images
+
+Repository:
+https://github.com/jordan-bird/CIFAKE-Real-and-AI-Generated-Synthetic-Images
+
+**Defactify Image Dataset**
+
+Rajarshi Roy et al., *A Comprehensive Dataset for Human vs. AI Generated Image Detection*, 2026.
+
+Dataset:
+https://huggingface.co/datasets/Rajarshi-Roy-research/Defactify_Image_Dataset
+
+Paper:
+https://arxiv.org/abs/2601.00553
+
+### Model
+
+EfficientNet-B0 is used as the transfer-learning backbone with ImageNet-pretrained weights provided through Torchvision.
+
+### Libraries
+
+This project uses open-source libraries including PyTorch, Torchvision, FastAPI, Pillow, OpenCV, Scikit-learn, C2PA tooling, React, TypeScript, and Vite.
+
+---
+
+# 🎥 Demo
+
+**Demo video:** _Add final 3–5 minute demo link here._
+
+The demo should show:
+
+1. A new image being uploaded
+2. Real/AI verdict and confidence
+3. Grad-CAM explanation
+4. Generator attribution
+5. Provenance information
+6. Robustness/evaluation evidence
+7. Responsible-AI limitations
+
+---
+
+# 🚀 Deployment
+
+The project includes deployment preparation files:
+
+```text
+Dockerfile
+.dockerignore
+requirements-deploy.txt
+```
+
+The current submission is primarily intended to be run locally for reliable judging and reproducibility.
+
+No deployed application is required to run the included inference system.
+
+---
+
+# 👥 Team
+
+**Project:** SignalScope  
+**Hackathon:** SIH 2026 — Internal Hackathon  
+**Theme:** Telling Real From Synthetic in the Age of Generative Media
+
+---
+
+## ⭐ Final Note
+
+SignalScope is designed around one central principle:
+
+> **Detect, explain, verify — without overclaiming.**
+
+A strong AI detector should not only perform well on familiar data. It should be tested against unseen generators, inspected for robustness, provide interpretable evidence, expose provenance signals when available, and communicate uncertainty responsibly.
