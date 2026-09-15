@@ -383,7 +383,7 @@ cd SignalScope
 Checkout the final project branch if required:
 
 ```bash
-git checkout bonus-d-provenance
+git checkout main
 ```
 
 ---
@@ -486,7 +486,7 @@ npm run dev
 Vite will display the local frontend URL, normally:
 
 ```text
-http://localhost:5173
+http://localhost:3000
 ```
 
 Open that address in a browser.
