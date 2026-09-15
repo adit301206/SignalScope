@@ -8,3 +8,4 @@ scikit-learn
 opencv-python-headless
 c2pa-python==0.37.10
 requests
+python-multipart
